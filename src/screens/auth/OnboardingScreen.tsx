@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, FlatList, Dimensions, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, Dimensions, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -62,12 +62,22 @@ export default function OnboardingScreen() {
       
       <View className="absolute bottom-10 w-full items-center">
         <View className="flex-row mb-8">
-          {slides.map((_, index) => (
-            <View
-              key={index}
-              className={}
-            />
-          ))}
+          {slides.map((_, index) => {
+            // Use simple inline styles for dynamic dots to avoid JSX parser issues
+            const isActive = currentIndex === index;
+            return (
+              <View
+                key={index}
+                style={{
+                  height: 8,
+                  width: 8,
+                  borderRadius: 4,
+                  backgroundColor: isActive ? '#FF6B00' : '#4B5563',
+                  marginHorizontal: 4,
+                }}
+              />
+            );
+          })}
         </View>
         
         <TouchableOpacity
