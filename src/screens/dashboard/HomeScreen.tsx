@@ -1,363 +1,292 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, Text, TouchableOpacity, StyleSheet, Alert, 
-  Linking, Platform, Animated, TextInput, FlatList, ActivityIndicator,
-  Modal, ScrollView
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, TextInput, FlatList, ActivityIndicator, Modal } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { getDistanceFromLatLonInKm } from '../../utils/fareCalculator';
 
+// ✅ Fixed: API Key now defined here
 const LOCATIONIQ_API_KEY = 'pk.b5d0d39c629b03e185b0d137936c9029';
 
-// Improved Dark Map Style
+// ✅ Premium Dark Map Style
 const DARK_MAP_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#a0aec0" }] },
-  { elementType: "labels.icon", stylers: [{ color: "#718096" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#cbd5e0" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#2d3748" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#4a5568" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#e2e8f0" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#1a365d" }] },
+  { elementType: "geometry", stylers: [{ color: "#0f172a" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#94a3b8" }] },
+  { elementType: "labels.icon", stylers: [{ color: "#64748b" }] },
+  {
+    featureType: "administrative.locality",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#cbd5e1" }]
+  },
+  {
+    featureType: "poi",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#94a3b8" }]
+  },
+  {
+    featureType: "poi.park",
+    elementType: "geometry",
+    stylers: [{ color: "#064e3b" }]
+  },
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ color: "#1e293b" }]
+  },
+  {
+    featureType: "road",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#334155" }]
+  },
+  {
+    featureType: "road",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#e2e8f0" }]
+  },
+  {
+    featureType: "road.highway",
+    elementType: "geometry",
+    stylers: [{ color: "#334155" }]
+  },
+  {
+    featureType: "road.highway",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#f8fafc" }]
+  },
+  {
+    featureType: "transit",
+    elementType: "geometry",
+    stylers: [{ color: "#1e293b" }]
+  },
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [{ color: "#0c4a6e" }]
+  },
+  {
+    featureType: "water",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#475569" }]
+  }
 ];
-
-// --- Custom Wheel Picker Component ---
-// This replaces the native DateTimePicker to prevent double-dialog issues
-const WheelPicker = ({ items, selectedIndex, onSelectionChange, height = 150 }) => {
-  const itemHeight = 40;
-  const flatListRef = useRef<FlatList>(null);
-
-  const scrollToIndex = (index: number) => {
-    if (flatListRef.current) {
-      flatListRef.current.scrollToIndex({ index, animated: true });
-    }
-  };
-
-  useEffect(() => {
-    scrollToIndex(selectedIndex);
-  }, []);
-
-  return (
-    <View style={{ height: height, overflow: 'hidden', position: 'relative' }}>
-      {/* Selection Indicator Lines */}
-      <View style={{ position: 'absolute', top: height / 2 - 20, left: 0, right: 0, height: 40, borderBottomWidth: 1, borderTopWidth: 1, borderColor: '#FF6B00', zIndex: 10 }} />
-      
-      <FlatList
-        ref={flatListRef}
-        data={items}
-        keyExtractor={(item, index) => index.toString()}
-        snapToInterval={itemHeight}
-        decelerationRate="fast"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingVertical: (height - itemHeight) / 2 }}
-        getItemLayout={(data, index) => ({ length: itemHeight, offset: itemHeight * index, index })}
-        onMomentumScrollEnd={(event) => {
-          const index = Math.round(event.nativeEvent.contentOffset.y / itemHeight);
-          if (index !== selectedIndex && index >= 0 && index < items.length) {
-            onSelectionChange(index);
-          }
-        }}
-        renderItem={({ item, index }) => (
-          <View style={{ height: itemHeight, justifyContent: 'center', alignItems: 'center' }}>
-            <Text style={{ 
-              fontSize: selectedIndex === index ? 22 : 16, 
-              fontWeight: selectedIndex === index ? 'bold' : 'normal',
-              color: selectedIndex === index ? '#1a202c' : '#a0aec0'
-            }}>
-              {item}
-            </Text>
-          </View>
-        )}
-      />
-    </View>
-  );
-};
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
-  const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  const mapRef = useRef<MapView>(null);
+  const [location, setLocation] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [startQuery, setStartQuery] = useState('Current Location');
+  const [startQuery, setStartQuery] = useState('');
   const [endQuery, setEndQuery] = useState('');
   const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [activeInput, setActiveInput] = useState<'start' | 'end' | null>(null);
   const [startLocation, setStartLocation] = useState<any>(null);
   const [endLocation, setEndLocation] = useState<any>(null);
-  const [distanceKm, setDistanceKm] = useState(0);
+  const [distance, setDistance] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [tempPosition, setTempPosition] = useState<any>(null);
+
+  useEffect(() => { initLocation(); }, []);
   
-  const [isScheduled, setIsScheduled] = useState(false);
-  const [pickupDate, setPickupDate] = useState(new Date());
-  const [pickupTime, setPickupTime] = useState(new Date());
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
-  
-  // Custom Picker State
-  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const [selectedMonthIndex, setSelectedMonthIndex] = useState(0);
-  const [selectedYearIndex, setSelectedYearIndex] = useState(0);
-  const [selectedHourIndex, setSelectedHourIndex] = useState(0);
-  const [selectedMinuteIndex, setSelectedMinuteIndex] = useState(0);
-  const [selectedAmPmIndex, setSelectedAmPmIndex] = useState(0);
+  useEffect(() => { 
+    if (startLocation?.lat && endLocation?.lat) {
+      calculateRoute();
+    }
+  }, [startLocation, endLocation]);
 
-  const [isRoundTrip, setIsRoundTrip] = useState(false);
-  const [isForWork, setIsForWork] = useState(false);
-
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  // Data for Pickers
-  const days = Array.from({ length: 31 }, (_, i) => i + 1);
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const years = [2024, 2025, 2026, 2027];
-  const hours = Array.from({ length: 12 }, (_, i) => i + 1);
-  const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
-  const ampm = ['AM', 'PM'];
-
-  useEffect(() => {
-    startPulseAnimation();
-    requestLocationPermission();
-  }, []);
-
-  const startPulseAnimation = () => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.15, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-      ])
-    ).start();
-  };
-
-  const requestLocationPermission = async () => {
+  const initLocation = async () => {
     setIsLoading(true);
-    let { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') { setIsLoading(false); return; }
     try {
-      let currentLocation = await Location.getCurrentPositionAsync({});
-      setLocation(currentLocation);
-      setStartLocation({ lat: currentLocation.coords.latitude, lng: currentLocation.coords.longitude, name: 'Current Location' });
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+      const loc = await Location.getCurrentPositionAsync({});
+      const lat = loc.coords.latitude;
+      const lng = loc.coords.longitude;
+      const address = await getAddress(lat, lng);
+      const locData = { lat, lng, name: address };
+      setLocation(locData);
+      setStartLocation(locData);
+      setStartQuery(address);
     } finally { setIsLoading(false); }
   };
 
-  const fetchLocations = async (query: string) => {
-    if (query.length < 3) { setSuggestions([]); return; }
-    setIsSearching(true);
+  const getAddress = async (lat: number, lng: number) => {
     try {
-      const url = `https://us1.locationiq.com/v1/autocomplete?key=${LOCATIONIQ_API_KEY}&q=${encodeURIComponent(query)}&countrycodes=in&limit=5&format=json`;
-      const response = await fetch(url);
-      const data = await response.json();
+      const result = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+      if (result.length > 0) {
+        const r = result[0];
+        return [r.city, r.region].filter(Boolean).join(', ') || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      }
+    } catch (e) {}
+    return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  };
+
+  const calculateRoute = () => {
+    if (!startLocation?.lat || !endLocation?.lat) return;
+    setIsLoadingRoute(true);
+    const dist = getDistanceFromLatLonInKm(startLocation.lat, startLocation.lng, endLocation.lat, endLocation.lng);
+    const dur = Math.round(dist * 1.2);
+    setDistance(Math.round(dist * 10) / 10);
+    setDuration(dur);
+    setIsLoadingRoute(false);
+  };
+
+  const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  };
+
+  const useCurrentLocation = () => {
+    if (!location) return Alert.alert("Info", "Getting location...");
+    if (activeInput === 'start' || !activeInput) {
+      setStartLocation(location);
+      setStartQuery('Current Location');
+    } else {
+      setEndLocation(location);
+      setEndQuery('Current Location');
+    }
+  };
+
+  const openMapPicker = (type: 'start' | 'end') => {
+    setActiveInput(type);
+    setTempPosition(type === 'start' ? startLocation : endLocation);
+    setShowMapPicker(true);
+  };
+
+  const confirmMapSelection = async () => {
+    if (!tempPosition?.lat) return;
+    const address = await getAddress(tempPosition.lat, tempPosition.lng);
+    const loc = { ...tempPosition, name: address };
+    if (activeInput === 'start') { setStartLocation(loc); setStartQuery(address); }
+    else { setEndLocation(loc); setEndQuery(address); }
+    setShowMapPicker(false);
+  };
+
+  const searchLocations = async (query: string) => {
+    if (query.length < 3) { setSuggestions([]); return; }
+    try {
+      const url = `https://us1.locationiq.com/v1/autocomplete?key=${LOCATIONIQ_API_KEY}&q=${encodeURIComponent(query)}&countrycodes=in&limit=5`;
+      const res = await fetch(url);
+      const data = await res.json();
       if (Array.isArray(data)) {
-        setSuggestions(data.map((item: any, index: number) => ({
-          id: `${item.place_id || index}_${Date.now()}_${Math.random()}`,
-          name: item.display_name || item.name || query,
+        setSuggestions(data.map((item: any, i: number) => ({
+          id: `${i}_${Date.now()}`,
+          name: item.display_name,
           lat: parseFloat(item.lat) || 0,
           lng: parseFloat(item.lon) || 0
         })));
       }
-    } catch (error) { console.error(error); }
-    finally { setIsSearching(false); }
+    } catch (e) { console.error(e); }
   };
 
-  const handleSelectLocation = (item: any) => {
-    if (activeInput === 'start') {
-      setStartLocation(item);
-      setStartQuery(item.name.split(',')[0]);
-    } else {
-      setEndLocation(item);
-      setEndQuery(item.name.split(',')[0]);
-    }
-    updateCalculations();
+  const selectLocation = (item: any) => {
+    if (activeInput === 'start') { setStartLocation(item); setStartQuery(item.name.split(',')[0]); }
+    else { setEndLocation(item); setEndQuery(item.name.split(',')[0]); }
     setSuggestions([]);
   };
 
-  const updateCalculations = () => {
-    if (startLocation && endLocation) {
-      const baseDist = getDistanceFromLatLonInKm(startLocation.lat, startLocation.lng, endLocation.lat, endLocation.lng);
-      setDistanceKm(isRoundTrip ? baseDist * 1.9 : baseDist);
-    }
-  };
-
-  useEffect(() => { updateCalculations(); }, [isRoundTrip, startLocation, endLocation]);
-
-  const getRoadRoute = (start: any, end: any) => {
-    if (!start || !end) return [];
+  const getRoutePoints = () => {
+    if (!startLocation?.lat || !endLocation?.lat) return [];
     const points = [];
-    for (let i = 0; i <= 10; i++) {
-      points.push({ latitude: start.lat + (end.lat - start.lat) * (i / 10) + (Math.random() * 0.003), longitude: start.lng + (end.lng - start.lng) * (i / 10) + (Math.random() * 0.003) });
+    const steps = 6;
+    for (let i = 0; i <= steps; i++) {
+      const progress = i / steps;
+      const baseLat = startLocation.lat + (endLocation.lat - startLocation.lat) * progress;
+      const baseLng = startLocation.lng + (endLocation.lng - startLocation.lng) * progress;
+      const offset = Math.sin(progress * Math.PI) * 0.015;
+      const lat = typeof baseLat === 'number' && !isNaN(baseLat) ? baseLat + offset : startLocation.lat;
+      const lng = typeof baseLng === 'number' && !isNaN(baseLng) ? baseLng + offset : startLocation.lng;
+      points.push({ latitude: lat, longitude: lng });
     }
     return points;
   };
 
-  const handleShareLocation = async () => {
-    if (!startLocation || !endLocation) return Alert.alert("Info", "Select both locations first.");
-    const fare = Math.round(50 + (distanceKm * 12));
-    const text = `🚗 DORIGO RIDE\n📍 From: ${startQuery}\n📍 To: ${endQuery}\n ${distanceKm.toFixed(1)} km\n ₹${fare}\n⏰ ${isScheduled ? formatDateTime(pickupDate, pickupTime) : 'ASAP'}\n${isRoundTrip ? '🔄 Round Trip' : '➡️ One Way'}`;
-    Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`);
-  };
+  if (isLoading) return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#FF6B00" /><Text style={styles.loadingText}>Getting your location...</Text></View>;
 
-  const handleSearchDrop = () => {
-    if (!startLocation || !endLocation) return Alert.alert("Error", "Select both locations.");
-    navigation.navigate('VehicleSelection', { pickup: startLocation, drop: endLocation, distance: distanceKm, isScheduled, pickupDateTime: isScheduled ? new Date(pickupDate.getFullYear(), pickupDate.getMonth(), pickupDate.getDate(), pickupTime.getHours(), pickupTime.getMinutes()) : null, isRoundTrip, isForWork });
-  };
-
-  const formatDateTime = (date: Date, time: Date) => {
-    return `${date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}, ${time.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`;
-  };
-
-  const openScheduleModal = () => {
-    // Reset picker indices based on current state
-    setSelectedDayIndex(pickupDate.getDate() - 1);
-    setSelectedMonthIndex(pickupDate.getMonth());
-    setSelectedYearIndex(years.indexOf(pickupDate.getFullYear()));
-    
-    let hour = pickupTime.getHours();
-    const ampmIdx = hour >= 12 ? 1 : 0;
-    hour = hour % 12;
-    hour = hour ? hour : 12;
-    setSelectedHourIndex(hour - 1);
-    setSelectedMinuteIndex(pickupTime.getMinutes());
-    setSelectedAmPmIndex(ampmIdx);
-    
-    setShowScheduleModal(true);
-  };
-
-  const confirmSchedule = () => {
-    const newDate = new Date(years[selectedYearIndex], selectedMonthIndex, days[selectedDayIndex]);
-    const hour24 = selectedAmPmIndex === 1 ? (selectedHourIndex + 1 === 12 ? 12 : selectedHourIndex + 1 + 12) : (selectedHourIndex + 1 === 12 ? 0 : selectedHourIndex + 1);
-    const newTime = new Date();
-    newTime.setHours(hour24);
-    newTime.setMinutes(selectedMinuteIndex);
-
-    setPickupDate(newDate);
-    setPickupTime(newTime);
-    setIsScheduled(true);
-    setShowScheduleModal(false);
-  };
-
-  const cancelSchedule = () => {
-    setShowScheduleModal(false);
-  };
-
-  if (isLoading) return <View className="flex-1 bg-primary items-center justify-center"><ActivityIndicator size="large" color="#FF6B00" /></View>;
+  const routePoints = getRoutePoints();
 
   return (
-    <View className="flex-1 bg-primary">
-      <MapView provider={PROVIDER_GOOGLE} style={StyleSheet.absoluteFillObject} region={{ latitude: startLocation?.lat || 12.97, longitude: startLocation?.lng || 77.59, latitudeDelta: 0.0922, longitudeDelta: 0.0421 }} customMapStyle={DARK_MAP_STYLE}>
-        {startLocation && <Marker coordinate={{ latitude: startLocation.lat, longitude: startLocation.lng }} pinColor="#3B82F6" />}
-        {endLocation && <Marker coordinate={{ latitude: endLocation.lat, longitude: endLocation.lng }} pinColor="#FF6B00" />}
-        {startLocation && endLocation && <Polyline coordinates={getRoadRoute(startLocation, endLocation)} strokeColor="#FF6B00" strokeWidth={4} />}
+    <View style={styles.container}>
+      <MapView 
+        ref={mapRef} 
+        provider={PROVIDER_GOOGLE} 
+        style={StyleSheet.absoluteFillObject} 
+        region={{ latitude: startLocation?.lat || 12.97, longitude: startLocation?.lng || 77.59, latitudeDelta: 0.1, longitudeDelta: 0.1 }}
+        customMapStyle={DARK_MAP_STYLE}
+      >
+        {startLocation?.lat && <Marker coordinate={{ latitude: startLocation.lat, longitude: startLocation.lng }} pinColor="#3B82F6" title="Pickup" />}
+        {endLocation?.lat && <Marker coordinate={{ latitude: endLocation.lat, longitude: endLocation.lng }} pinColor="#FF6B00" title="Drop" />}
+        {routePoints.length >= 2 && <Polyline coordinates={routePoints} strokeColor="#FF6B00" strokeWidth={5} />}
       </MapView>
 
-      <View className="absolute top-12 left-4 right-4 z-10">
-        <View className="bg-white rounded-2xl shadow-xl overflow-hidden">
-          <View className="flex-row items-center p-3 border-b border-gray-100">
-            <View className="w-3 h-3 rounded-full bg-blue-500 mr-3" />
-            <TextInput className="flex-1 text-gray-800 font-bold" placeholder="Start Location" value={startQuery} onFocus={() => setActiveInput('start')} onChangeText={(t) => { setStartQuery(t); setActiveInput('start'); fetchLocations(t); }} />
-          </View>
-          <View className="flex-row items-center p-3">
-            <View className="w-3 h-3 rounded bg-orange-500 mr-3" />
-            <TextInput className="flex-1 text-gray-800" placeholder="Where to?" value={endQuery} onFocus={() => setActiveInput('end')} onChangeText={(t) => { setEndQuery(t); setActiveInput('end'); fetchLocations(t); }} />
-          </View>
-          {suggestions.length > 0 && (
-            <View className="bg-white border-t border-gray-200 max-h-48">
-              <FlatList data={suggestions} keyExtractor={(i) => i.id} renderItem={({ item }) => <TouchableOpacity className="p-3 border-b border-gray-100" onPress={() => handleSelectLocation(item)}><Text className="text-gray-700 text-sm" numberOfLines={2}>{item.name}</Text></TouchableOpacity>} />
-            </View>
-          )}
-          {isSearching && <View className="p-3"><ActivityIndicator size="small" color="#FF6B00" /></View>}
+      <View style={styles.inputCard}>
+        <View style={styles.inputRow}>
+          <View style={styles.blueDot} />
+          <TextInput style={styles.input} placeholder="Pickup location" placeholderTextColor="#9CA3AF" value={startQuery} onFocus={() => setActiveInput('start')} onChangeText={(t) => { setStartQuery(t); setActiveInput('start'); searchLocations(t); }} />
+          <TouchableOpacity onPress={() => openMapPicker('start')} style={styles.mapIcon}><Ionicons name="map-outline" size={20} color="#6B7280" /></TouchableOpacity>
         </View>
 
-        <View className="flex-row gap-2 mt-3">
-          <TouchableOpacity onPress={openScheduleModal} className={`flex-1 p-3 rounded-xl flex-row items-center justify-center border ${isScheduled ? 'bg-accent border-accent' : 'bg-gray-800/90 border-gray-700'}`}>
-            <Ionicons name="calendar-outline" size={18} color={isScheduled ? '#FFF' : '#9CA3AF'} />
-            <Text className={`text-xs ml-1.5 font-bold ${isScheduled ? 'text-white' : 'text-gray-300'}`}>Schedule</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setIsRoundTrip(!isRoundTrip)} className={`flex-1 p-3 rounded-xl flex-row items-center justify-center border ${isRoundTrip ? 'bg-accent border-accent' : 'bg-gray-800/90 border-gray-700'}`}>
-            <Ionicons name="repeat-outline" size={18} color={isRoundTrip ? '#FFF' : '#9CA3AF'} />
-            <Text className={`text-xs ml-1.5 font-bold ${isRoundTrip ? 'text-white' : 'text-gray-300'}`}>Round Trip</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setIsForWork(!isForWork)} className={`flex-1 p-3 rounded-xl flex-row items-center justify-center border ${isForWork ? 'bg-accent border-accent' : 'bg-gray-800/90 border-gray-700'}`}>
-            <Ionicons name="briefcase-outline" size={18} color={isForWork ? '#FFF' : '#9CA3AF'} />
-            <Text className={`text-xs ml-1.5 font-bold ${isForWork ? 'text-white' : 'text-gray-300'}`}>For Work</Text>
-          </TouchableOpacity>
+        <View style={styles.inputRow}>
+          <View style={styles.orangeDot} />
+          <TextInput style={styles.input} placeholder="Destination" placeholderTextColor="#9CA3AF" value={endQuery} onFocus={() => setActiveInput('end')} onChangeText={(t) => { setEndQuery(t); setActiveInput('end'); searchLocations(t); }} />
+          <TouchableOpacity onPress={() => openMapPicker('end')} style={styles.mapIcon}><Ionicons name="map-outline" size={20} color="#6B7280" /></TouchableOpacity>
         </View>
 
-        {isScheduled && (
-          <View className="bg-gray-800/90 p-3 rounded-xl mt-3 flex-row items-center justify-between border border-gray-700">
-            <View className="flex-row items-center">
-              <Ionicons name="time-outline" size={18} color="#FF6B00" />
-              <View className="ml-2">
-                <Text className="text-gray-400 text-xs">Pickup Time</Text>
-                <Text className="text-white text-sm font-bold">{formatDateTime(pickupDate, pickupTime)}</Text>
-              </View>
-            </View>
-            <TouchableOpacity onPress={openScheduleModal}><Ionicons name="create-outline" size={18} color="#9CA3AF" /></TouchableOpacity>
-          </View>
-        )}
+        {/* ✅ Changed to Orange to match UI */}
+        <TouchableOpacity onPress={useCurrentLocation} style={styles.currentLocationButton}>
+          <Ionicons name="location" size={18} color="#FFF" />
+          <Text style={styles.currentLocationText}>Use Current Location</Text>
+        </TouchableOpacity>
 
-        {distanceKm > 0 && (
-          <View className="bg-gray-900/95 p-4 rounded-2xl shadow-lg mt-3">
-            <View className="flex-row justify-between items-center mb-4">
-              <View><Text className="text-gray-400 text-[10px] uppercase">Distance</Text><Text className="text-white font-bold text-lg">{distanceKm.toFixed(1)} km</Text></View>
-              <View><Text className="text-gray-400 text-[10px] uppercase">Est. Fare</Text><Text className="text-green-400 font-bold text-lg">₹{Math.round(50 + (distanceKm * 12))}</Text></View>
-              <TouchableOpacity onPress={handleShareLocation} className="bg-accent p-3 rounded-xl"><Ionicons name="share-social" size={20} color="#FFF" /></TouchableOpacity>
-            </View>
-            <TouchableOpacity onPress={handleSearchDrop} className="bg-accent py-4 rounded-xl items-center"><Text className="text-white font-bold">Search Rides</Text></TouchableOpacity>
+        {suggestions.length > 0 && (
+          <View style={styles.suggestionsContainer}>
+            <FlatList data={suggestions} keyExtractor={(item) => item.id} renderItem={({ item }) => (
+              <TouchableOpacity style={styles.suggestionItem} onPress={() => selectLocation(item)}>
+                <Text style={styles.suggestionText} numberOfLines={2}>{item.name}</Text>
+              </TouchableOpacity>
+            )} />
           </View>
         )}
       </View>
 
-      <Animated.View style={{ transform: [{ scale: pulseAnim }], position: 'absolute', bottom: 30, left: 20, right: 20, alignItems: 'center', zIndex: 20 }}>
-        <TouchableOpacity onPress={() => navigation.navigate('EmergencySOS')} className="flex-row items-center px-8 py-4 rounded-full" style={{ backgroundColor: '#DC2626', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' }}>
-          <Ionicons name="medical" size={28} color="#FFF" />
-          <Text className="text-white font-bold text-lg ml-3">EMERGENCY SOS</Text>
-        </TouchableOpacity>
-      </Animated.View>
+      {distance > 0 && (
+        <View style={styles.routeInfoCard}>
+          <View style={styles.routeInfoRow}>
+            <View><Text style={styles.infoLabel}>Distance</Text><Text style={styles.infoValue}>{distance.toFixed(1)} km</Text></View>
+            <View><Text style={styles.infoLabel}>Time</Text><Text style={styles.infoValue}>{duration} min</Text></View>
+            <TouchableOpacity onPress={() => navigation.navigate('VehicleSelection', { 
+              pickup: startLocation, 
+              drop: endLocation, 
+              distance,
+              tollInfo: { hasTolls: false, tollAmount: 0, tollCount: 0 }
+            })} style={styles.searchButton}><Text style={styles.searchButtonText}>Search</Text></TouchableOpacity>
+          </View>
+        </View>
+      )}
 
-      {/* --- COMPLETELY CUSTOM SCHEDULE MODAL (No Native Dialogs) --- */}
-      <Modal visible={showScheduleModal} transparent animationType="fade" onRequestClose={cancelSchedule}>
-        <View className="flex-1 bg-black/70 items-center justify-center p-4">
-          <View className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
-            {/* Header */}
-            <View className="p-4 border-b border-gray-200 flex-row justify-between items-center">
-              <Text className="text-gray-800 font-bold text-lg">Schedule Pickup</Text>
-              <TouchableOpacity onPress={cancelSchedule} className="w-8 h-8 items-center justify-center">
-                <Ionicons name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
+      {isLoadingRoute && <View style={styles.loadingRouteCard}><ActivityIndicator color="#FF6B00" /><Text style={styles.loadingRouteText}>Calculating route...</Text></View>}
 
-            {/* Scrollable Content */}
-            <ScrollView className="max-h-[60vh]">
-              <View className="p-4">
-                
-                {/* Date Picker */}
-                <Text className="text-gray-600 text-sm font-semibold mb-2">Date</Text>
-                <View className="flex-row gap-2 bg-gray-50 rounded-xl p-2 mb-4 justify-center">
-                  <View className="flex-1"><WheelPicker items={days.map(d => d.toString())} selectedIndex={selectedDayIndex} onSelectionChange={setSelectedDayIndex} height={120} /></View>
-                  <View className="flex-1"><WheelPicker items={months} selectedIndex={selectedMonthIndex} onSelectionChange={setSelectedMonthIndex} height={120} /></View>
-                  <View className="flex-1"><WheelPicker items={years.map(y => y.toString())} selectedIndex={selectedYearIndex} onSelectionChange={setSelectedYearIndex} height={120} /></View>
-                </View>
+      <TouchableOpacity onPress={() => navigation.navigate('EmergencySOS')} style={styles.emergencyButton}>
+        <Ionicons name="medical" size={28} color="#FFF" />
+        <Text style={styles.emergencyButtonText}>EMERGENCY SOS</Text>
+      </TouchableOpacity>
 
-                {/* Time Picker */}
-                <Text className="text-gray-600 text-sm font-semibold mb-2">Time</Text>
-                <View className="flex-row gap-2 bg-gray-50 rounded-xl p-2 justify-center">
-                  <View className="flex-1"><WheelPicker items={hours.map(h => h.toString())} selectedIndex={selectedHourIndex} onSelectionChange={setSelectedHourIndex} height={120} /></View>
-                  <View className="flex-1"><WheelPicker items={minutes} selectedIndex={selectedMinuteIndex} onSelectionChange={setSelectedMinuteIndex} height={120} /></View>
-                  <View className="flex-1"><WheelPicker items={ampm} selectedIndex={selectedAmPmIndex} onSelectionChange={setSelectedAmPmIndex} height={120} /></View>
-                </View>
-
-              </View>
-            </ScrollView>
-
-            {/* Footer Buttons */}
-            <View className="flex-row p-4 border-t border-gray-200 gap-3 bg-white">
-              <TouchableOpacity onPress={cancelSchedule} className="flex-1 bg-gray-200 py-3 rounded-xl items-center">
-                <Text className="text-gray-800 font-bold">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={confirmSchedule} className="flex-1 bg-accent py-3 rounded-xl items-center shadow-lg shadow-orange-500/30">
-                <Text className="text-white font-bold">Confirm</Text>
-              </TouchableOpacity>
+      <Modal visible={showMapPicker} transparent>
+        <View style={styles.modalContainer}>
+          <MapView style={StyleSheet.absoluteFillObject} region={{ latitude: tempPosition?.lat || 12.97, longitude: tempPosition?.lng || 77.59, latitudeDelta: 0.05, longitudeDelta: 0.05 }} onPress={(e) => setTempPosition({ lat: e.nativeEvent.coordinate.latitude, lng: e.nativeEvent.coordinate.longitude })}>
+            {tempPosition?.lat && <Marker coordinate={tempPosition} pinColor="#FF6B00" draggable onDragEnd={(e) => setTempPosition({ lat: e.nativeEvent.coordinate.latitude, lng: e.nativeEvent.coordinate.longitude })} />}
+          </MapView>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select on Map</Text>
+            <Text style={styles.modalSubtitle}>Drag pin or tap anywhere</Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity onPress={() => setShowMapPicker(false)} style={styles.modalCancelButton}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity onPress={confirmMapSelection} style={styles.modalConfirmButton}><Text style={styles.modalConfirmText}>Confirm</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -365,3 +294,39 @@ export default function HomeScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#000' },
+  loadingContainer: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
+  loadingText: { color: '#FFF', marginTop: 16 },
+  inputCard: { position: 'absolute', top: 48, left: 16, right: 16, backgroundColor: '#FFF', borderRadius: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  blueDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#3B82F6', marginRight: 12 },
+  orangeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF6B00', marginRight: 12 },
+  input: { flex: 1, fontSize: 16, fontWeight: '600', color: '#1F2937' },
+  mapIcon: { padding: 8 },
+  currentLocationButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FF6B00', paddingVertical: 12, borderRadius: 12, marginBottom: 12 },
+  currentLocationText: { color: '#FFF', fontWeight: 'bold', marginLeft: 8 },
+  suggestionsContainer: { borderTopWidth: 1, borderTopColor: '#E5E7EB', maxHeight: 192 },
+  suggestionItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  suggestionText: { color: '#374151', fontSize: 14 },
+  routeInfoCard: { position: 'absolute', bottom: 128, left: 16, right: 16, backgroundColor: '#1F2937', borderRadius: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
+  routeInfoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  infoLabel: { color: '#9CA3AF', fontSize: 12 },
+  infoValue: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
+  searchButton: { backgroundColor: '#FF6B00', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  searchButtonText: { color: '#FFF', fontWeight: 'bold' },
+  loadingRouteCard: { position: 'absolute', bottom: 128, left: 16, right: 16, backgroundColor: '#1F2937', borderRadius: 16, padding: 16, alignItems: 'center' },
+  loadingRouteText: { color: '#9CA3AF', fontSize: 12, marginTop: 8 },
+  emergencyButton: { position: 'absolute', bottom: 96, left: 32, right: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#DC2626', paddingVertical: 16, borderRadius: 9999, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', shadowColor: '#DC2626', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 10 },
+  emergencyButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 18, marginLeft: 12 },
+  modalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)' },
+  modalContent: { position: 'absolute', top: 64, left: 16, right: 16, backgroundColor: '#FFF', borderRadius: 16, padding: 16 },
+  modalTitle: { color: '#1F2937', fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
+  modalSubtitle: { color: '#6B7280', fontSize: 14, marginBottom: 16 },
+  modalButtons: { flexDirection: 'row', gap: 12 },
+  modalCancelButton: { flex: 1, backgroundColor: '#E5E7EB', paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  modalCancelText: { color: '#374151', fontWeight: 'bold' },
+  modalConfirmButton: { flex: 1, backgroundColor: '#FF6B00', paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  modalConfirmText: { color: '#FFF', fontWeight: 'bold' },
+});
